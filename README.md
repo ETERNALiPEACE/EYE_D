@@ -1,19 +1,21 @@
-# Eye detector - BioID + DenseNet121
+# Eye detector - Facial Keypoints + DenseNet121
 
 Projekt zawiera kod podobny organizacyjnie do podanego przykladu Keras, ale
 zamiast klasyfikacji wideo trenuje model do wykrywania oczu ludzi na zdjeciach.
 Model przewiduje cztery znormalizowane wspolrzedne:
 
 ```text
-left_eye_x, left_eye_y, right_eye_x, right_eye_y
+left_eye_center_x, left_eye_center_y, right_eye_center_x, right_eye_center_y
 ```
 
-Jako baza danych uzywany jest publiczny **BioID Face Database**:
+Jako baza danych uzywany jest publiczny mirror **Kaggle Facial Keypoints
+Detection**:
 
-- 1521 zdjec twarzy ludzi,
-- rozdzielczosc oryginalna 384x286,
-- recznie oznaczone pozycje lewego i prawego oka w plikach `.eye`,
-- zrodlo: https://ftp.uni-erlangen.de/pub/facedb/readme.html
+- 7049 zdjec twarzy ludzi,
+- obrazy 96x96 zapisane w `training.csv` jako piksele,
+- recznie oznaczone punkty twarzy, w tym srodki lewego i prawego oka,
+- mirror: https://github.com/ruchawaghulde/Facial-Keypoints-Detection
+- opis konkursu: https://www.kaggle.com/c/facial-keypoints-detection/data
 
 ## Instalacja
 
@@ -24,34 +26,52 @@ pip install -r requirements.txt
 ## Trening modelu przez 50 epok
 
 ```bash
-python eye_detection_bioid.py --download --epochs 50
+python eye_detection_facial_keypoints.py --download --epochs 50
 ```
 
 Skrypt:
 
-1. pobierze `BioID-FaceDatabase-V1.2.zip`,
-2. pobierze `BioID-FD-Eyepos-V1.2.zip`,
-3. wczyta obrazy i adnotacje oczu,
+1. pobierze `training.zip` z publicznego mirroru,
+2. rozpakowuje `training.csv`,
+3. wczyta obrazy twarzy i adnotacje oczu,
 4. wytrenuje model DenseNet121 z wlasna glowa regresyjna,
-5. zapisze model do `models/bioid_eye_detector.keras`,
-6. zapisze wykres treningu do `outputs/training_history.png`.
+5. zapisze model do `models/facial_keypoints_eye_detector.keras`,
+6. zapisze wykres treningu do `outputs/training_history.png`,
+7. zapisze podglad rzeczywistych zdjec i punktow oczu do
+   `outputs/dataset_preview.png`.
+
+Do szybkiego sprawdzenia kodu bez pelnego treningu mozna ograniczyc liczbe probek:
+
+```bash
+python eye_detection_facial_keypoints.py --download --epochs 1 --max-samples 128
+```
 
 ## Predykcja na podeslanych zdjeciach
 
 Po treningu mozna zaznaczyc oczy na wlasnych zdjeciach:
 
 ```bash
-python eye_detection_bioid.py \
+python eye_detection_facial_keypoints.py \
   --skip-train \
-  --model-path models/bioid_eye_detector.keras \
+  --model-path models/facial_keypoints_eye_detector.keras \
   --images zdjecie1.jpg zdjecie2.jpg
 ```
 
-Wyniki zostana zapisane w `outputs/predictions/`.
+Wyniki zostana zapisane w `outputs/predictions/`. Przy predykcji skrypt najpierw
+probuje znalezc najwieksza twarz detektorem OpenCV, a dopiero potem wyznacza
+pozycje oczu na wycinku twarzy. Jesli chcesz pominac detekcje twarzy:
+
+```bash
+python eye_detection_facial_keypoints.py \
+  --skip-train \
+  --model-path models/facial_keypoints_eye_detector.keras \
+  --images zdjecie1.jpg \
+  --no-face-detect
+```
 
 ## Uwaga
 
-BioID zawiera pojedyncze, frontalne twarze. Model bedzie dzialal najlepiej na
-podobnych zdjeciach: jedna osoba, widoczna twarz, oczy bez duzych zasloniec.
-Jesli zdjecie zawiera wiele osob, najpierw warto dodac detektor twarzy i uruchamiac
-ten model osobno na kazdym wycieciu twarzy.
+Ten dataset zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej,
+gdy twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami
+obecny kod wybiera najwieksza wykryta twarz.
+# EYE_D
