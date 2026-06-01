@@ -65,17 +65,29 @@ display(Image(filename="/content/outputs/dataset_preview.png"))
 
 ## Losowe predykcje na zdjeciach z bazy
 
-Jesli model jest juz wytrenowany, osobny skrypt moze wylosowac przykladowe
-twarze bezposrednio z datasetu i porownac predykcje modelu z etykietami z bazy:
+Glowny program potrafi tez wylosowac przykladowe twarze bezposrednio z datasetu
+i porownac predykcje modelu z etykietami oczu z bazy:
 
 ```bash
-python random_dataset_eye_predictions.py --count 8 --seed 42
+python eye_detection_facial_keypoints.py \
+  --skip-train \
+  --model-path models/facial_keypoints_eye_detector.keras \
+  --random-dataset \
+  --random-count 8 \
+  --random-seed 42
 ```
 
-Skrypt jest powiazany z glownym programem przez import funkcji z
-`eye_detection_facial_keypoints.py`, ale pozostaje odizolowany: nie uruchamia
-treningu i zapisuje swoje wyniki osobno w
-`outputs/random_dataset_predictions/`.
+Jesli chcesz po treningu od razu wykonac losowe predykcje, pomin `--skip-train`:
+
+```bash
+python eye_detection_facial_keypoints.py --download --epochs 50 --random-dataset
+```
+
+Wyniki trafia do:
+
+```text
+outputs/random_dataset_predictions/
+```
 
 Najwazniejszy plik wynikowy to:
 

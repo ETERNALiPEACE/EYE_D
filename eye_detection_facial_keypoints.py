@@ -18,6 +18,7 @@ NUM_COORDINATES = 4
 EPOCHS = 50
 BATCH_SIZE = 32
 RANDOM_SEED = 42
+RANDOM_DATASET_OUTPUT_DIR = "outputs/random_dataset_predictions"
 
 DATASET_URL = (
     "https://raw.githubusercontent.com/ruchawaghulde/"
@@ -357,6 +358,132 @@ def predict_eyes(model, image_paths, output_dir, detect_face=True):
         print(f"Zapisano obraz z detekcja: {output_path}")
 
 
+def normalized_coordinates_to_pixels(coordinates):
+    coordinates = np.asarray(coordinates, dtype="float32")
+    return coordinates.reshape(2, 2) * IMG_SIZE
+
+
+def save_random_dataset_prediction(image, prediction, target, output_path, title):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    predicted_points = normalized_coordinates_to_pixels(prediction)
+    target_points = normalized_coordinates_to_pixels(target)
+
+    plt.figure(figsize=(4, 4))
+    plt.imshow(image.astype("uint8"))
+    plt.scatter(
+        predicted_points[:, 0],
+        predicted_points[:, 1],
+        c=["lime", "red"],
+        marker="o",
+        s=60,
+        label="predykcja",
+    )
+    plt.scatter(
+        target_points[:, 0],
+        target_points[:, 1],
+        c=["cyan", "magenta"],
+        marker="x",
+        s=70,
+        label="etykieta z bazy",
+    )
+    plt.title(title)
+    plt.axis("off")
+    plt.legend(loc="lower center", fontsize=8)
+    plt.tight_layout()
+    plt.savefig(str(output_path))
+    plt.close()
+
+
+def save_random_dataset_grid(images, predictions, targets, indices, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    count = len(images)
+    columns = min(4, count)
+    rows = int(np.ceil(count / columns))
+    plt.figure(figsize=(columns * 3, rows * 3))
+
+    for plot_idx, image in enumerate(images):
+        ax = plt.subplot(rows, columns, plot_idx + 1)
+        predicted_points = normalized_coordinates_to_pixels(predictions[plot_idx])
+        target_points = normalized_coordinates_to_pixels(targets[plot_idx])
+
+        ax.imshow(image.astype("uint8"))
+        ax.scatter(
+            predicted_points[:, 0],
+            predicted_points[:, 1],
+            c=["lime", "red"],
+            marker="o",
+            s=45,
+        )
+        ax.scatter(
+            target_points[:, 0],
+            target_points[:, 1],
+            c=["cyan", "magenta"],
+            marker="x",
+            s=55,
+        )
+        ax.set_title(f"idx {indices[plot_idx]}", fontsize=9)
+        ax.axis("off")
+
+    plt.suptitle("Kolko = predykcja modelu, X = etykieta z bazy", fontsize=12)
+    plt.tight_layout()
+    plt.savefig(str(output_path))
+    plt.close()
+    print(f"Zapisano siatke losowych predykcji: {output_path}")
+
+
+def predict_random_dataset_eyes(
+    model,
+    data_dir,
+    count=8,
+    output_dir=RANDOM_DATASET_OUTPUT_DIR,
+    seed=None,
+    max_samples=None,
+):
+    """Losuje osoby z datasetu i zapisuje detekcje oczu wykonane modelem."""
+    if count <= 0:
+        raise ValueError("--random-count musi byc wieksze od 0.")
+
+    images, labels = load_keypoints_dataset(data_dir, max_samples=max_samples)
+    if len(images) == 0:
+        raise ValueError("Dataset nie zawiera zadnych obrazow do losowania.")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    count = min(count, len(images))
+    rng = np.random.default_rng(seed)
+    indices = rng.choice(len(images), size=count, replace=False)
+    selected_images = images[indices]
+    selected_labels = labels[indices]
+
+    predictions = model.predict(selected_images, batch_size=min(32, count), verbose=0)
+    predictions = np.clip(predictions, 0.0, 1.0)
+
+    for local_idx, dataset_idx in enumerate(indices):
+        output_path = output_dir / f"random_{local_idx + 1:02d}_idx_{dataset_idx}.png"
+        save_random_dataset_prediction(
+            selected_images[local_idx],
+            predictions[local_idx],
+            selected_labels[local_idx],
+            output_path,
+            title=f"Dataset index: {dataset_idx}",
+        )
+        print(f"Zapisano losowa predykcje: {output_path}")
+
+    save_random_dataset_grid(
+        selected_images,
+        predictions,
+        selected_labels,
+        indices,
+        output_dir / "random_predictions_grid.png",
+    )
+    print(f"Wylosowane indeksy z datasetu: {indices.tolist()}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -412,6 +539,28 @@ def parse_args():
         action="store_true",
         help="Nie kadruj twarzy detektorem OpenCV przy predykcji.",
     )
+    parser.add_argument(
+        "--random-dataset",
+        action="store_true",
+        help="Wylosuj osoby z bazy i wykonaj na nich predykcje oczu.",
+    )
+    parser.add_argument(
+        "--random-count",
+        type=int,
+        default=8,
+        help="Liczba losowych osob z datasetu do predykcji.",
+    )
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=None,
+        help="Seed losowania osob z datasetu.",
+    )
+    parser.add_argument(
+        "--random-output-dir",
+        default=RANDOM_DATASET_OUTPUT_DIR,
+        help="Katalog zapisu losowych predykcji z datasetu.",
+    )
     # Colab/Jupyter dodaje wlasne argumenty uruchomieniowe, ktore argparse
     # powinien zignorowac.
     args, _ = parser.parse_known_args()
@@ -422,7 +571,8 @@ def main():
     args = parse_args()
 
     dataset_file_path = Path(args.data_dir) / TRAINING_CSV
-    if not args.skip_train and not dataset_file_path.exists():
+    needs_dataset = not args.skip_train or args.random_dataset
+    if needs_dataset and not dataset_file_path.exists():
         print(f"Dataset file {dataset_file_path} not found. Forcing download.")
         args.download = True
 
@@ -445,6 +595,16 @@ def main():
             args.images,
             args.output_dir,
             detect_face=not args.no_face_detect,
+        )
+
+    if args.random_dataset:
+        predict_random_dataset_eyes(
+            model,
+            args.data_dir,
+            count=args.random_count,
+            output_dir=args.random_output_dir,
+            seed=args.random_seed,
+            max_samples=args.max_samples,
         )
 
 
