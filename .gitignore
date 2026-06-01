@@ -1,0 +1,8 @@
+data/
+models/
+outputs/
+*.keras
+*.h5
+*.weights.h5
+__pycache__/
+.ipynb_checkpoints/
