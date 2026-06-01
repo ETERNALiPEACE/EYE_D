@@ -20,6 +20,7 @@ BATCH_SIZE = 16
 RANDOM_SEED = 42
 DEFAULT_MAX_SAMPLES = 2000
 RANDOM_DATASET_OUTPUT_DIR = "outputs/random_dataset_predictions"
+DEFAULT_EYE_CROP_OUTPUT_DIR = "outputs/eye_crops"
 
 CELEBA_BASE_URL = "https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba"
 CELEBA_IMAGES_DIR = "img_align_celeba"
@@ -278,6 +279,114 @@ def save_dataset_preview(images, labels, output_path, count=9):
             "Sprawdz uprawnienia albo dostepna pamiec."
         )
     print(f"Zapisano podglad datasetu: {output_path}")
+
+
+def eye_crop_bounds(image_shape, coordinates, padding=0.45):
+    height, width = image_shape[:2]
+    points = normalized_coordinates_to_pixels_for_shape(coordinates, width, height)
+    left_eye, right_eye = points[0], points[1]
+
+    min_x = min(left_eye[0], right_eye[0])
+    max_x = max(left_eye[0], right_eye[0])
+    min_y = min(left_eye[1], right_eye[1])
+    max_y = max(left_eye[1], right_eye[1])
+    eye_distance = max(float(np.linalg.norm(left_eye - right_eye)), 1.0)
+
+    x_padding = eye_distance * padding
+    y_padding = max(eye_distance * padding * 0.6, height * 0.04)
+
+    x1 = max(0, int(np.floor(min_x - x_padding)))
+    y1 = max(0, int(np.floor(min_y - y_padding)))
+    x2 = min(width, int(np.ceil(max_x + x_padding)))
+    y2 = min(height, int(np.ceil(max_y + y_padding)))
+
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("Nie mozna wyznaczyc poprawnego prostokata oczu.")
+    return x1, y1, x2, y2
+
+
+def normalized_coordinates_to_pixels_for_shape(coordinates, width, height):
+    coordinates = np.asarray(coordinates, dtype="float32").reshape(2, 2)
+    scale = np.array([width, height], dtype="float32")
+    return coordinates * scale
+
+
+def crop_eye_region(image, coordinates, padding=0.45):
+    x1, y1, x2, y2 = eye_crop_bounds(image.shape, coordinates, padding=padding)
+    return image[y1:y2, x1:x2].copy(), (x1, y1, x2, y2)
+
+
+def save_eye_crop_grid(crops, output_path, columns=4):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not crops:
+        return
+
+    columns = min(columns, len(crops))
+    rows = int(np.ceil(len(crops) / columns))
+    plt.figure(figsize=(columns * 3, rows * 2))
+
+    for idx, crop in enumerate(crops):
+        ax = plt.subplot(rows, columns, idx + 1)
+        ax.imshow(crop.astype("uint8"))
+        ax.set_title(f"crop {idx + 1}", fontsize=9)
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(str(output_path))
+    plt.close()
+    print(f"Zapisano siatke wycinkow oczu: {output_path}")
+
+
+def save_dataset_eye_crops(
+    data_dir,
+    output_dir=DEFAULT_EYE_CROP_OUTPUT_DIR,
+    count=32,
+    padding=0.45,
+    seed=None,
+    max_samples=None,
+):
+    data_dir = Path(data_dir)
+    if not (data_dir / CELEBA_LANDMARKS_FILE).exists():
+        download_celeba_landmarks(data_dir)
+
+    records = read_celeba_landmark_records(data_dir, max_samples=max_samples)
+    if not records:
+        raise ValueError("Dataset nie zawiera obrazow do wycinania oczu.")
+
+    extract_celeba_images(data_dir, records)
+    images_dir = data_dir / CELEBA_IMAGES_DIR
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if count is None or count <= 0:
+        count = len(records)
+    count = min(count, len(records))
+
+    rng = np.random.default_rng(seed)
+    indices = rng.choice(len(records), size=count, replace=False)
+    preview_crops = []
+
+    for local_idx, dataset_idx in enumerate(indices):
+        filename, coordinates = records[dataset_idx]
+        image_path = images_dir / filename
+        image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if image_bgr is None:
+            raise ValueError(f"Nie mozna wczytac obrazu: {image_path}")
+
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        crop, bounds = crop_eye_region(image_rgb, coordinates, padding=padding)
+        output_path = output_dir / f"eye_crop_{local_idx + 1:04d}_idx_{dataset_idx}.png"
+        crop_bgr = cv2.cvtColor(crop.astype("uint8"), cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(output_path), crop_bgr)
+        preview_crops.append(crop)
+        print(f"Zapisano wycinek oczu: {output_path}; bounds={bounds}")
+
+    save_eye_crop_grid(
+        preview_crops[: min(16, len(preview_crops))],
+        output_dir / "eye_crops_grid.png",
+    )
+    print(f"Wylosowane indeksy do wycinkow oczu: {indices.tolist()}")
 
 
 def train_model(data_dir, model_path, epochs, max_samples=None):
@@ -638,6 +747,28 @@ def parse_args():
         default=RANDOM_DATASET_OUTPUT_DIR,
         help="Katalog zapisu losowych predykcji z datasetu.",
     )
+    parser.add_argument(
+        "--save-eye-crops",
+        action="store_true",
+        help="Wytnij prostokat obejmujacy oba oczy ze zdjec CelebA.",
+    )
+    parser.add_argument(
+        "--eye-crop-count",
+        type=int,
+        default=32,
+        help="Liczba wycinkow oczu do zapisania. Ustaw 0, aby zapisac wszystkie.",
+    )
+    parser.add_argument(
+        "--eye-crop-padding",
+        type=float,
+        default=0.45,
+        help="Margines prostokata oczu wzgledem odleglosci miedzy oczami.",
+    )
+    parser.add_argument(
+        "--eye-crop-output-dir",
+        default=DEFAULT_EYE_CROP_OUTPUT_DIR,
+        help="Katalog zapisu wycinkow prostokata obejmujacego oba oczy.",
+    )
     # Colab/Jupyter dodaje wlasne argumenty uruchomieniowe, ktore argparse
     # powinien zignorowac.
     args, _ = parser.parse_known_args()
@@ -648,14 +779,26 @@ def main():
     args = parse_args()
     max_samples = normalize_max_samples(args.max_samples)
 
-    needs_dataset = not args.skip_train or args.random_dataset or args.download
+    needs_dataset = not args.skip_train or args.random_dataset or args.save_eye_crops or args.download
     if needs_dataset:
         landmarks_path = Path(args.data_dir) / CELEBA_LANDMARKS_FILE
         if args.download or not landmarks_path.exists():
             download_and_prepare_celeba(args.data_dir, max_samples=max_samples)
 
+    if args.save_eye_crops:
+        save_dataset_eye_crops(
+            args.data_dir,
+            output_dir=args.eye_crop_output_dir,
+            count=args.eye_crop_count,
+            padding=args.eye_crop_padding,
+            seed=args.random_seed,
+            max_samples=max_samples,
+        )
+
+    model = None
     if args.skip_train:
-        model = keras.models.load_model(args.model_path)
+        if args.images or args.random_dataset:
+            model = keras.models.load_model(args.model_path)
     else:
         model = train_model(
             args.data_dir,

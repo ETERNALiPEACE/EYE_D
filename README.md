@@ -78,6 +78,50 @@ Jesli uruchamiasz kod w katalogu `/content`, poprawna sciezka bedzie tez:
 display(Image(filename="/content/outputs/dataset_preview.png"))
 ```
 
+## Wycinanie prostokata obejmujacego oba oczy
+
+Glowny program moze wycinac z oryginalnych kolorowych JPG CelebA jeden prostokat,
+ktory obejmuje lewe i prawe oko naraz. Do samego wycinania nie trzeba ladowac modelu,
+wiec mozna uzyc `--skip-train`:
+
+```bash
+python eye_detection_facial_keypoints.py \
+  --download \
+  --skip-train \
+  --save-eye-crops \
+  --eye-crop-count 32 \
+  --random-seed 42
+```
+
+Wycinki zostana zapisane w:
+
+```text
+outputs/eye_crops/
+```
+
+Najwazniejszy podglad:
+
+```text
+outputs/eye_crops/eye_crops_grid.png
+```
+
+W Colab/Jupyter wyswietlisz go tak:
+
+```python
+from IPython.display import Image, display
+
+display(Image(filename="/content/outputs/eye_crops/eye_crops_grid.png"))
+```
+
+Parametr `--eye-crop-padding` reguluje margines wokol oczu, np.:
+
+```bash
+python eye_detection_facial_keypoints.py --skip-train --save-eye-crops --eye-crop-padding 0.6
+```
+
+Ustawienie `--eye-crop-count 0` zapisze wycinki dla wszystkich wczytanych obrazow
+z zakresu `--max-samples`.
+
 ## Losowe predykcje na zdjeciach z bazy
 
 Glowny program potrafi wylosowac przykladowe kolorowe twarze bezposrednio z
@@ -151,4 +195,3 @@ python eye_detection_facial_keypoints.py \
 CelebA zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej, gdy
 twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami obecny
 kod wybiera najwieksza wykryta twarz.
-# EYE_D
