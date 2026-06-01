@@ -1,4 +1,3 @@
-import argparse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -26,6 +25,26 @@ CELEBA_BASE_URL = "https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba"
 CELEBA_IMAGES_DIR = "img_align_celeba"
 CELEBA_IMAGE_ZIP = "img_align_celeba.zip"
 CELEBA_LANDMARKS_FILE = "list_landmarks_align_celeba.txt"
+
+# Prosta konfiguracja do Colab/Jupyter. Zmien te wartosci przed uruchomieniem.
+DATA_DIR = "data/celeba"
+MODEL_PATH = "models/celeba_eye_detector.keras"
+PREDICTION_OUTPUT_DIR = "outputs/predictions"
+DOWNLOAD_DATA = False
+SKIP_TRAIN = False
+MAX_SAMPLES = DEFAULT_MAX_SAMPLES
+IMAGE_PATHS = []
+NO_FACE_DETECT = False
+
+RUN_RANDOM_DATASET = False
+RANDOM_COUNT = 8
+RANDOM_DATASET_SEED = None
+RANDOM_OUTPUT_DIR = RANDOM_DATASET_OUTPUT_DIR
+
+SAVE_EYE_CROPS = False
+EYE_CROP_COUNT = 32
+EYE_CROP_PADDING = 0.45
+EYE_CROP_OUTPUT_DIR = DEFAULT_EYE_CROP_OUTPUT_DIR
 
 
 def normalize_max_samples(max_samples):
@@ -63,7 +82,7 @@ def read_celeba_landmark_records(data_dir, max_samples=None):
     landmarks_path = Path(data_dir) / CELEBA_LANDMARKS_FILE
     if not landmarks_path.exists():
         raise FileNotFoundError(
-            f"Nie znaleziono {landmarks_path}. Uruchom skrypt z --download "
+            f"Nie znaleziono {landmarks_path}. Wlacz DOWNLOAD_DATA "
             "albo pozwol na automatyczne pobranie danych."
         )
 
@@ -631,7 +650,7 @@ def predict_random_dataset_eyes(
 ):
     """Losuje osoby z kolorowego CelebA i zapisuje detekcje oczu modelem."""
     if count <= 0:
-        raise ValueError("--random-count musi byc wieksze od 0.")
+        raise ValueError("RANDOM_COUNT musi byc wieksze od 0.")
 
     images, labels = load_celeba_dataset(data_dir, max_samples=max_samples)
     if len(images) == 0:
@@ -670,169 +689,52 @@ def predict_random_dataset_eyes(
     print(f"Wylosowane indeksy z datasetu: {indices.tolist()}")
 
 
-def cli_argument(*flags, **options):
-    return flags, options
-
-
-CLI_ARGUMENTS = [
-    cli_argument(
-        "--data-dir",
-        default="data/celeba",
-        help="Katalog na kolorowy dataset CelebA.",
-    ),
-    cli_argument(
-        "--download",
-        action="store_true",
-        help="Pobierz landmarki CelebA oraz archiwum img_align_celeba.zip.",
-    ),
-    cli_argument(
-        "--epochs",
-        type=int,
-        default=EPOCHS,
-        help="Liczba epok treningu. Domyslnie 50.",
-    ),
-    cli_argument(
-        "--max-samples",
-        type=int,
-        default=DEFAULT_MAX_SAMPLES,
-        help=(
-            "Limit pobieranych/wczytywanych zdjec CelebA. Domyslnie 2000. "
-            "Ustaw 0, aby uzyc wszystkich rekordow."
-        ),
-    ),
-    cli_argument(
-        "--model-path",
-        default="models/celeba_eye_detector.keras",
-        help="Sciezka zapisu lub odczytu modelu.",
-    ),
-    cli_argument(
-        "--images",
-        nargs="*",
-        default=[],
-        help="Sciezki do zdjec, na ktorych zaznaczyc oczy.",
-    ),
-    cli_argument(
-        "--output-dir",
-        default="outputs/predictions",
-        help="Katalog zapisu zdjec z zaznaczonymi oczami.",
-    ),
-    cli_argument(
-        "--skip-train",
-        action="store_true",
-        help="Nie trenuj modelu, tylko wczytaj --model-path i wykonaj predykcje.",
-    ),
-    cli_argument(
-        "--no-face-detect",
-        action="store_true",
-        help="Nie kadruj twarzy detektorem OpenCV przy predykcji.",
-    ),
-    cli_argument(
-        "--random-dataset",
-        action="store_true",
-        help="Wylosuj osoby z kolorowego CelebA i wykonaj predykcje oczu.",
-    ),
-    cli_argument(
-        "--random-count",
-        type=int,
-        default=8,
-        help="Liczba losowych osob z datasetu do predykcji.",
-    ),
-    cli_argument(
-        "--random-seed",
-        type=int,
-        default=None,
-        help="Seed losowania osob z datasetu.",
-    ),
-    cli_argument(
-        "--random-output-dir",
-        default=RANDOM_DATASET_OUTPUT_DIR,
-        help="Katalog zapisu losowych predykcji z datasetu.",
-    ),
-    cli_argument(
-        "--save-eye-crops",
-        action="store_true",
-        help="Wytnij prostokat obejmujacy oba oczy ze zdjec CelebA.",
-    ),
-    cli_argument(
-        "--eye-crop-count",
-        type=int,
-        default=32,
-        help="Liczba wycinkow oczu do zapisania. Ustaw 0, aby zapisac wszystkie.",
-    ),
-    cli_argument(
-        "--eye-crop-padding",
-        type=float,
-        default=0.45,
-        help="Margines prostokata oczu wzgledem odleglosci miedzy oczami.",
-    ),
-    cli_argument(
-        "--eye-crop-output-dir",
-        default=DEFAULT_EYE_CROP_OUTPUT_DIR,
-        help="Katalog zapisu wycinkow prostokata obejmujacego oba oczy.",
-    ),
-]
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Trening modelu DenseNet121 do wykrywania oczu na kolorowym CelebA."
-    )
-    for flags, options in CLI_ARGUMENTS:
-        parser.add_argument(*flags, **options)
-
-    # Colab/Jupyter dodaje wlasne argumenty uruchomieniowe, ktore argparse
-    # powinien zignorowac.
-    args, _ = parser.parse_known_args()
-    return args
-
-
 def main():
-    args = parse_args()
-    max_samples = normalize_max_samples(args.max_samples)
+    max_samples = normalize_max_samples(MAX_SAMPLES)
 
-    needs_dataset = not args.skip_train or args.random_dataset or args.save_eye_crops or args.download
+    needs_dataset = not SKIP_TRAIN or RUN_RANDOM_DATASET or SAVE_EYE_CROPS or DOWNLOAD_DATA
     if needs_dataset:
-        landmarks_path = Path(args.data_dir) / CELEBA_LANDMARKS_FILE
-        if args.download or not landmarks_path.exists():
-            download_and_prepare_celeba(args.data_dir, max_samples=max_samples)
+        landmarks_path = Path(DATA_DIR) / CELEBA_LANDMARKS_FILE
+        if DOWNLOAD_DATA or not landmarks_path.exists():
+            download_and_prepare_celeba(DATA_DIR, max_samples=max_samples)
 
-    if args.save_eye_crops:
+    if SAVE_EYE_CROPS:
         save_dataset_eye_crops(
-            args.data_dir,
-            output_dir=args.eye_crop_output_dir,
-            count=args.eye_crop_count,
-            padding=args.eye_crop_padding,
-            seed=args.random_seed,
+            DATA_DIR,
+            output_dir=EYE_CROP_OUTPUT_DIR,
+            count=EYE_CROP_COUNT,
+            padding=EYE_CROP_PADDING,
+            seed=RANDOM_DATASET_SEED,
             max_samples=max_samples,
         )
 
     model = None
-    if args.skip_train:
-        if args.images or args.random_dataset:
-            model = keras.models.load_model(args.model_path)
+    if SKIP_TRAIN:
+        if IMAGE_PATHS or RUN_RANDOM_DATASET:
+            model = keras.models.load_model(MODEL_PATH)
     else:
         model = train_model(
-            args.data_dir,
-            args.model_path,
-            args.epochs,
+            DATA_DIR,
+            MODEL_PATH,
+            EPOCHS,
             max_samples=max_samples,
         )
 
-    if args.images:
+    if IMAGE_PATHS:
         predict_eyes(
             model,
-            args.images,
-            args.output_dir,
-            detect_face=not args.no_face_detect,
+            IMAGE_PATHS,
+            PREDICTION_OUTPUT_DIR,
+            detect_face=not NO_FACE_DETECT,
         )
 
-    if args.random_dataset:
+    if RUN_RANDOM_DATASET:
         predict_random_dataset_eyes(
             model,
-            args.data_dir,
-            count=args.random_count,
-            output_dir=args.random_output_dir,
-            seed=args.random_seed,
+            DATA_DIR,
+            count=RANDOM_COUNT,
+            output_dir=RANDOM_OUTPUT_DIR,
+            seed=RANDOM_DATASET_SEED,
             max_samples=max_samples,
         )
 

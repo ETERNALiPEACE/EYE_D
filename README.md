@@ -1,25 +1,32 @@
 # Eye detector - CelebA + DenseNet121
 
-Projekt zawiera kod podobny organizacyjnie do podanego przykladu Keras, ale
-zamiast klasyfikacji wideo trenuje model do wykrywania oczu ludzi na kolorowych
-zdjeciach twarzy. Model przewiduje cztery znormalizowane wspolrzedne:
+Projekt trenuje model Keras/DenseNet121 do wykrywania oczu ludzi na kolorowych
+zdjeciach twarzy z datasetu **CelebA**.
+
+Model przewiduje:
 
 ```text
 left_eye_x, left_eye_y, right_eye_x, right_eye_y
 ```
 
-Jako baza danych uzywany jest publiczny mirror **CelebA**:
+Dataset:
 
-- ponad 200 tys. kolorowych, wyrownanych zdjec twarzy,
-- obrazy JPG 218x178,
-- plik `list_landmarks_align_celeba.txt` z 5 landmarkami twarzy,
-- do treningu wykorzystywane sa landmarki lewego i prawego oka,
+- kolorowe, wyrownane twarze JPG 218x178,
+- landmarki twarzy w `list_landmarks_align_celeba.txt`,
+- do treningu uzywane sa punkty lewego i prawego oka,
 - mirror: https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba/
-- opis datasetu: https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
 
-Skrypt pobiera zdjecia w archiwum `img_align_celeba.zip`, zapisuje je w
-`data/celeba/raw/`, a potem rozpakowuje z ZIP-a obrazy potrzebne dla aktualnego
-limitu `--max-samples`.
+Zdjecia sa pobierane jako ZIP:
+
+```text
+data/celeba/raw/img_align_celeba.zip
+```
+
+a potem rozpakowywane do:
+
+```text
+data/celeba/img_align_celeba/
+```
 
 ## Instalacja
 
@@ -27,85 +34,61 @@ limitu `--max-samples`.
 pip install -r requirements.txt
 ```
 
-## Trening modelu przez 50 epok
+## Konfiguracja
 
-Domyslnie skrypt pobiera archiwum ZIP CelebA i wypakowuje 2000 kolorowych zdjec:
-
-```bash
-python eye_detection_facial_keypoints.py --download --epochs 50
-```
-
-Mozesz ustawic inny limit:
-
-```bash
-python eye_detection_facial_keypoints.py --download --epochs 50 --max-samples 5000
-```
-
-Ustawienie `--max-samples 0` oznacza probe uzycia wszystkich rekordow CelebA,
-czyli wypakowanie wszystkich obrazow z archiwum ZIP.
-
-Skrypt:
-
-1. pobierze `list_landmarks_align_celeba.txt`,
-2. pobierze `img_align_celeba.zip`,
-3. rozpakowuje z ZIP-a potrzebne zdjecia twarzy i wczyta adnotacje oczu,
-4. wytrenuje model DenseNet121 z wlasna glowa regresyjna,
-5. zapisze model do `models/celeba_eye_detector.keras`,
-6. zapisze wykres treningu do `outputs/training_history.png`,
-7. zapisze podglad kolorowych zdjec i punktow oczu do
-   `outputs/dataset_preview.png`.
-
-Do szybkiego sprawdzenia kodu bez pelnego treningu:
-
-```bash
-python eye_detection_facial_keypoints.py --download --epochs 1 --max-samples 128
-```
-
-## Podglad datasetu w Colab/Jupyter
-
-Po uruchomieniu treningu lub szybkiego testu skrypt zapisuje podglad danych do
-`outputs/dataset_preview.png`. W notebooku wyswietlisz go tak:
+W Colab/Jupyter najprosciej zmieniac stale na gorze
+`eye_detection_facial_keypoints.py`:
 
 ```python
-from IPython.display import Image, display
+DOWNLOAD_DATA = False
+SKIP_TRAIN = False
+MAX_SAMPLES = DEFAULT_MAX_SAMPLES
 
-display(Image(filename="outputs/dataset_preview.png"))
+RUN_RANDOM_DATASET = False
+SAVE_EYE_CROPS = False
+IMAGE_PATHS = []
 ```
 
-Jesli uruchamiasz kod w katalogu `/content`, poprawna sciezka bedzie tez:
+## Trening
+
+Domyslnie skrypt trenuje model przez 50 epok na 2000 obrazach:
+
+```bash
+python eye_detection_facial_keypoints.py
+```
+
+Model zostanie zapisany do:
+
+```text
+models/celeba_eye_detector.keras
+```
+
+Szybki test wymaga zmiany stalych:
 
 ```python
-display(Image(filename="/content/outputs/dataset_preview.png"))
+EPOCHS = 1
+MAX_SAMPLES = 128
 ```
 
 ## Wycinanie prostokata obejmujacego oba oczy
 
-Glowny program moze wycinac z oryginalnych kolorowych JPG CelebA jeden prostokat,
-ktory obejmuje lewe i prawe oko naraz. Do samego wycinania nie trzeba ladowac modelu,
-wiec mozna uzyc `--skip-train`:
+Aby tylko wyciac prostokaty oczu bez trenowania modelu, ustaw:
 
-```bash
-python eye_detection_facial_keypoints.py \
-  --download \
-  --skip-train \
-  --save-eye-crops \
-  --eye-crop-count 32 \
-  --random-seed 42
+```python
+SKIP_TRAIN = True
+SAVE_EYE_CROPS = True
+EYE_CROP_COUNT = 32
+RANDOM_DATASET_SEED = 42
 ```
 
-Wycinki zostana zapisane w:
+Wyniki:
 
 ```text
 outputs/eye_crops/
-```
-
-Najwazniejszy podglad:
-
-```text
 outputs/eye_crops/eye_crops_grid.png
 ```
 
-W Colab/Jupyter wyswietlisz go tak:
+W Colab:
 
 ```python
 from IPython.display import Image, display
@@ -113,85 +96,50 @@ from IPython.display import Image, display
 display(Image(filename="/content/outputs/eye_crops/eye_crops_grid.png"))
 ```
 
-Parametr `--eye-crop-padding` reguluje margines wokol oczu, np.:
+## Losowe predykcje z bazy
 
-```bash
-python eye_detection_facial_keypoints.py --skip-train --save-eye-crops --eye-crop-padding 0.6
+Po wytrenowaniu modelu ustaw:
+
+```python
+SKIP_TRAIN = True
+RUN_RANDOM_DATASET = True
+RANDOM_COUNT = 8
+RANDOM_DATASET_SEED = 42
 ```
 
-Ustawienie `--eye-crop-count 0` zapisze wycinki dla wszystkich wczytanych obrazow
-z zakresu `--max-samples`.
-
-## Losowe predykcje na zdjeciach z bazy
-
-Glowny program potrafi wylosowac przykladowe kolorowe twarze bezposrednio z
-CelebA i porownac predykcje modelu z etykietami oczu z bazy:
-
-```bash
-python eye_detection_facial_keypoints.py \
-  --skip-train \
-  --model-path models/celeba_eye_detector.keras \
-  --random-dataset \
-  --random-count 8 \
-  --random-seed 42
-```
-
-Jesli chcesz po treningu od razu wykonac losowe predykcje, pomin `--skip-train`:
-
-```bash
-python eye_detection_facial_keypoints.py --download --epochs 50 --random-dataset
-```
-
-Wyniki trafia do:
-
-```text
-outputs/random_dataset_predictions/
-```
-
-Najwazniejszy plik wynikowy to:
+Wynik:
 
 ```text
 outputs/random_dataset_predictions/random_predictions_grid.png
 ```
 
-W Colab/Jupyter wyswietlisz go tak:
+## Predykcja na wlasnych zdjeciach
+
+Po wytrenowaniu modelu ustaw:
+
+```python
+SKIP_TRAIN = True
+IMAGE_PATHS = ["zdjecie1.jpg", "zdjecie2.jpg"]
+```
+
+Wyniki zapisza sie w:
+
+```text
+outputs/predictions/
+```
+
+## Podglad datasetu
+
+Po treningu skrypt zapisuje:
+
+```text
+outputs/dataset_preview.png
+```
+
+W Colab:
 
 ```python
 from IPython.display import Image, display
 
-display(Image(filename="/content/outputs/random_dataset_predictions/random_predictions_grid.png"))
+display(Image(filename="/content/outputs/dataset_preview.png"))
 ```
-
-Na obrazach:
-
-- kolka oznaczaja predykcje modelu,
-- znaki `X` oznaczaja prawdziwe etykiety oczu z datasetu.
-
-## Predykcja na podeslanych zdjeciach
-
-Po treningu mozna zaznaczyc oczy na wlasnych zdjeciach:
-
-```bash
-python eye_detection_facial_keypoints.py \
-  --skip-train \
-  --model-path models/celeba_eye_detector.keras \
-  --images zdjecie1.jpg zdjecie2.jpg
-```
-
-Wyniki zostana zapisane w `outputs/predictions/`. Przy predykcji skrypt najpierw
-probuje znalezc najwieksza twarz detektorem OpenCV, a dopiero potem wyznacza
-pozycje oczu na wycinku twarzy. Jesli chcesz pominac detekcje twarzy:
-
-```bash
-python eye_detection_facial_keypoints.py \
-  --skip-train \
-  --model-path models/celeba_eye_detector.keras \
-  --images zdjecie1.jpg \
-  --no-face-detect
-```
-
-## Uwaga
-
-CelebA zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej, gdy
-twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami obecny
-kod wybiera najwieksza wykryta twarz.
