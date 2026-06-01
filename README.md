@@ -17,9 +17,9 @@ Jako baza danych uzywany jest publiczny mirror **CelebA**:
 - mirror: https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba/
 - opis datasetu: https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
 
-Skrypt nie pobiera calego archiwum `img_align_celeba.zip` o rozmiarze ok. 1.3 GB.
-Zamiast tego pobiera plik landmarkow oraz pojedyncze zdjecia JPG potrzebne do
-aktualnego limitu `--max-samples`.
+Skrypt pobiera zdjecia w archiwum `img_align_celeba.zip`, zapisuje je w
+`data/celeba/raw/`, a potem rozpakowuje z ZIP-a obrazy potrzebne dla aktualnego
+limitu `--max-samples`.
 
 ## Instalacja
 
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 ## Trening modelu przez 50 epok
 
-Domyslnie skrypt pobiera i wykorzystuje 2000 kolorowych zdjec:
+Domyslnie skrypt pobiera archiwum ZIP CelebA i wypakowuje 2000 kolorowych zdjec:
 
 ```bash
 python eye_detection_facial_keypoints.py --download --epochs 50
@@ -41,14 +41,14 @@ Mozesz ustawic inny limit:
 python eye_detection_facial_keypoints.py --download --epochs 50 --max-samples 5000
 ```
 
-Ustawienie `--max-samples 0` oznacza probe uzycia wszystkich rekordow CelebA, co
-pobierze bardzo duzo danych.
+Ustawienie `--max-samples 0` oznacza probe uzycia wszystkich rekordow CelebA,
+czyli wypakowanie wszystkich obrazow z archiwum ZIP.
 
 Skrypt:
 
 1. pobierze `list_landmarks_align_celeba.txt`,
-2. pobierze brakujace kolorowe obrazy z `img_align_celeba/`,
-3. wczyta zdjecia twarzy i adnotacje oczu,
+2. pobierze `img_align_celeba.zip`,
+3. rozpakowuje z ZIP-a potrzebne zdjecia twarzy i wczyta adnotacje oczu,
 4. wytrenuje model DenseNet121 z wlasna glowa regresyjna,
 5. zapisze model do `models/celeba_eye_detector.keras`,
 6. zapisze wykres treningu do `outputs/training_history.png`,

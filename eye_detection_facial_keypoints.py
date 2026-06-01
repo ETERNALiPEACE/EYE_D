@@ -1,5 +1,6 @@
 import argparse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import cv2
@@ -21,7 +22,8 @@ DEFAULT_MAX_SAMPLES = 2000
 RANDOM_DATASET_OUTPUT_DIR = "outputs/random_dataset_predictions"
 
 CELEBA_BASE_URL = "https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba"
-CELEBA_IMAGE_URL = f"{CELEBA_BASE_URL}/img_align_celeba"
+CELEBA_IMAGES_DIR = "img_align_celeba"
+CELEBA_IMAGE_ZIP = "img_align_celeba.zip"
 CELEBA_LANDMARKS_FILE = "list_landmarks_align_celeba.txt"
 
 
@@ -47,6 +49,13 @@ def download_celeba_landmarks(data_dir):
     landmarks_path = data_dir / CELEBA_LANDMARKS_FILE
     download_file(f"{CELEBA_BASE_URL}/{CELEBA_LANDMARKS_FILE}", landmarks_path)
     return landmarks_path
+
+
+def download_celeba_image_zip(data_dir):
+    data_dir = Path(data_dir)
+    zip_path = data_dir / "raw" / CELEBA_IMAGE_ZIP
+    download_file(f"{CELEBA_BASE_URL}/{CELEBA_IMAGE_ZIP}", zip_path)
+    return zip_path
 
 
 def read_celeba_landmark_records(data_dir, max_samples=None):
@@ -103,24 +112,42 @@ def read_celeba_landmark_records(data_dir, max_samples=None):
     return records
 
 
-def download_celeba_images(data_dir, records):
-    images_dir = Path(data_dir) / "img_align_celeba"
+def extract_celeba_images(data_dir, records):
+    data_dir = Path(data_dir)
+    images_dir = data_dir / CELEBA_IMAGES_DIR
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    for idx, (filename, _) in enumerate(records, start=1):
-        destination = images_dir / filename
-        if destination.exists():
-            continue
+    missing_filenames = [
+        filename for filename, _ in records if not (images_dir / filename).exists()
+    ]
+    if not missing_filenames:
+        print("Wszystkie wymagane obrazy CelebA sa juz rozpakowane.")
+        return
 
-        url = f"{CELEBA_IMAGE_URL}/{filename}"
-        print(f"Pobieranie obrazu {idx}/{len(records)}: {filename}")
-        urllib.request.urlretrieve(url, destination)
+    zip_path = download_celeba_image_zip(data_dir)
+    print(f"Rozpakowywanie {len(missing_filenames)} obrazow z {zip_path.name}")
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        archive_members = set(archive.namelist())
+        for idx, filename in enumerate(missing_filenames, start=1):
+            member_path = f"{CELEBA_IMAGES_DIR}/{filename}"
+            if member_path in archive_members:
+                archive.extract(member_path, data_dir)
+            elif filename in archive_members:
+                archive.extract(filename, images_dir)
+            else:
+                raise FileNotFoundError(
+                    f"Nie znaleziono {filename} w archiwum {zip_path}."
+                )
+
+            if idx % 100 == 0 or idx == len(missing_filenames):
+                print(f"Rozpakowano {idx}/{len(missing_filenames)} obrazow")
 
 
 def download_and_prepare_celeba(data_dir, max_samples=None):
     download_celeba_landmarks(data_dir)
     records = read_celeba_landmark_records(data_dir, max_samples=max_samples)
-    download_celeba_images(data_dir, records)
+    extract_celeba_images(data_dir, records)
 
 
 def load_celeba_dataset(data_dir, max_samples=None):
@@ -129,10 +156,10 @@ def load_celeba_dataset(data_dir, max_samples=None):
         download_celeba_landmarks(data_dir)
 
     records = read_celeba_landmark_records(data_dir, max_samples=max_samples)
-    download_celeba_images(data_dir, records)
+    extract_celeba_images(data_dir, records)
 
     images, labels = [], []
-    images_dir = data_dir / "img_align_celeba"
+    images_dir = data_dir / CELEBA_IMAGES_DIR
     for filename, eye_coordinates in records:
         image_path = images_dir / filename
         image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
@@ -546,7 +573,7 @@ def parse_args():
     parser.add_argument(
         "--download",
         action="store_true",
-        help="Pobierz landmarki CelebA i brakujace kolorowe zdjecia.",
+        help="Pobierz landmarki CelebA oraz archiwum img_align_celeba.zip.",
     )
     parser.add_argument(
         "--epochs",
