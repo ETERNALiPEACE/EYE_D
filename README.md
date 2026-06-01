@@ -46,6 +46,23 @@ Do szybkiego sprawdzenia kodu bez pelnego treningu mozna ograniczyc liczbe probe
 python eye_detection_facial_keypoints.py --download --epochs 1 --max-samples 128
 ```
 
+## Podglad datasetu w Colab/Jupyter
+
+Po uruchomieniu treningu lub szybkiego testu skrypt zapisuje podglad danych do
+`outputs/dataset_preview.png`. W notebooku wyswietlisz go tak:
+
+```python
+from IPython.display import Image, display
+
+display(Image(filename="outputs/dataset_preview.png"))
+```
+
+Jesli uruchamiasz kod w katalogu `/content`, poprawna sciezka bedzie tez:
+
+```python
+display(Image(filename="/content/outputs/dataset_preview.png"))
+```
+
 ## Predykcja na podeslanych zdjeciach
 
 Po treningu mozna zaznaczyc oczy na wlasnych zdjeciach:
@@ -74,4 +91,3 @@ python eye_detection_facial_keypoints.py \
 Ten dataset zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej,
 gdy twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami
 obecny kod wybiera najwieksza wykryta twarz.
-# EYE_D

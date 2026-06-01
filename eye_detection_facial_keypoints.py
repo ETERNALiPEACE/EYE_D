@@ -165,7 +165,7 @@ def plot_training_history(history, output_path):
     plt.ylabel("MSE")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_path)
+    plt.savefig(str(output_path))
     plt.close()
 
 
@@ -184,12 +184,21 @@ def save_dataset_preview(images, labels, output_path, count=9):
         left_eye = labels[idx, :2] * IMG_SIZE
         right_eye = labels[idx, 2:] * IMG_SIZE
         ax.imshow(image)
-        ax.scatter([left_eye[0], right_eye[0]], [left_eye[1], right_eye[1]], c=["lime", "red"])
+        ax.scatter(
+            [left_eye[0], right_eye[0]],
+            [left_eye[1], right_eye[1]],
+            c=["lime", "red"],
+        )
         ax.axis("off")
 
     plt.tight_layout()
-    plt.savefig(output_path)
+    plt.savefig(str(output_path))
     plt.close()
+    if not output_path.exists():
+        print(
+            f"Blad: plik {output_path} nie zostal zapisany. "
+            "Sprawdz uprawnienia albo dostepna pamiec."
+        )
     print(f"Zapisano podglad datasetu: {output_path}")
 
 
@@ -403,11 +412,19 @@ def parse_args():
         action="store_true",
         help="Nie kadruj twarzy detektorem OpenCV przy predykcji.",
     )
-    return parser.parse_args()
+    # Colab/Jupyter dodaje wlasne argumenty uruchomieniowe, ktore argparse
+    # powinien zignorowac.
+    args, _ = parser.parse_known_args()
+    return args
 
 
 def main():
     args = parse_args()
+
+    dataset_file_path = Path(args.data_dir) / TRAINING_CSV
+    if not args.skip_train and not dataset_file_path.exists():
+        print(f"Dataset file {dataset_file_path} not found. Forcing download.")
+        args.download = True
 
     if args.download:
         download_and_extract_dataset(args.data_dir)
