@@ -63,6 +63,39 @@ Jesli uruchamiasz kod w katalogu `/content`, poprawna sciezka bedzie tez:
 display(Image(filename="/content/outputs/dataset_preview.png"))
 ```
 
+## Losowe predykcje na zdjeciach z bazy
+
+Jesli model jest juz wytrenowany, osobny skrypt moze wylosowac przykladowe
+twarze bezposrednio z datasetu i porownac predykcje modelu z etykietami z bazy:
+
+```bash
+python random_dataset_eye_predictions.py --count 8 --seed 42
+```
+
+Skrypt jest powiazany z glownym programem przez import funkcji z
+`eye_detection_facial_keypoints.py`, ale pozostaje odizolowany: nie uruchamia
+treningu i zapisuje swoje wyniki osobno w
+`outputs/random_dataset_predictions/`.
+
+Najwazniejszy plik wynikowy to:
+
+```text
+outputs/random_dataset_predictions/random_predictions_grid.png
+```
+
+W Colab/Jupyter wyswietlisz go tak:
+
+```python
+from IPython.display import Image, display
+
+display(Image(filename="/content/outputs/random_dataset_predictions/random_predictions_grid.png"))
+```
+
+Na obrazach:
+
+- kolka oznaczaja predykcje modelu,
+- znaki `X` oznaczaja prawdziwe etykiety oczu z datasetu.
+
 ## Predykcja na podeslanych zdjeciach
 
 Po treningu mozna zaznaczyc oczy na wlasnych zdjeciach:
