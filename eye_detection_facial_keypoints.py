@@ -670,27 +670,28 @@ def predict_random_dataset_eyes(
     print(f"Wylosowane indeksy z datasetu: {indices.tolist()}")
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Trening modelu DenseNet121 do wykrywania oczu na kolorowym CelebA."
-    )
-    parser.add_argument(
+def cli_argument(*flags, **options):
+    return flags, options
+
+
+CLI_ARGUMENTS = [
+    cli_argument(
         "--data-dir",
         default="data/celeba",
         help="Katalog na kolorowy dataset CelebA.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--download",
         action="store_true",
         help="Pobierz landmarki CelebA oraz archiwum img_align_celeba.zip.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--epochs",
         type=int,
         default=EPOCHS,
         help="Liczba epok treningu. Domyslnie 50.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--max-samples",
         type=int,
         default=DEFAULT_MAX_SAMPLES,
@@ -698,77 +699,87 @@ def parse_args():
             "Limit pobieranych/wczytywanych zdjec CelebA. Domyslnie 2000. "
             "Ustaw 0, aby uzyc wszystkich rekordow."
         ),
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--model-path",
         default="models/celeba_eye_detector.keras",
         help="Sciezka zapisu lub odczytu modelu.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--images",
         nargs="*",
         default=[],
         help="Sciezki do zdjec, na ktorych zaznaczyc oczy.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--output-dir",
         default="outputs/predictions",
         help="Katalog zapisu zdjec z zaznaczonymi oczami.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--skip-train",
         action="store_true",
         help="Nie trenuj modelu, tylko wczytaj --model-path i wykonaj predykcje.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--no-face-detect",
         action="store_true",
         help="Nie kadruj twarzy detektorem OpenCV przy predykcji.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--random-dataset",
         action="store_true",
         help="Wylosuj osoby z kolorowego CelebA i wykonaj predykcje oczu.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--random-count",
         type=int,
         default=8,
         help="Liczba losowych osob z datasetu do predykcji.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--random-seed",
         type=int,
         default=None,
         help="Seed losowania osob z datasetu.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--random-output-dir",
         default=RANDOM_DATASET_OUTPUT_DIR,
         help="Katalog zapisu losowych predykcji z datasetu.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--save-eye-crops",
         action="store_true",
         help="Wytnij prostokat obejmujacy oba oczy ze zdjec CelebA.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--eye-crop-count",
         type=int,
         default=32,
         help="Liczba wycinkow oczu do zapisania. Ustaw 0, aby zapisac wszystkie.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--eye-crop-padding",
         type=float,
         default=0.45,
         help="Margines prostokata oczu wzgledem odleglosci miedzy oczami.",
-    )
-    parser.add_argument(
+    ),
+    cli_argument(
         "--eye-crop-output-dir",
         default=DEFAULT_EYE_CROP_OUTPUT_DIR,
         help="Katalog zapisu wycinkow prostokata obejmujacego oba oczy.",
+    ),
+]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Trening modelu DenseNet121 do wykrywania oczu na kolorowym CelebA."
     )
+    for flags, options in CLI_ARGUMENTS:
+        parser.add_argument(*flags, **options)
+
     # Colab/Jupyter dodaje wlasne argumenty uruchomieniowe, ktore argparse
     # powinien zignorowac.
     args, _ = parser.parse_known_args()
