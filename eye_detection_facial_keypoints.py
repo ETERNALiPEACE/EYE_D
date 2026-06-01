@@ -1,41 +1,38 @@
 import argparse
 import urllib.request
-import zipfile
 from pathlib import Path
 
 import cv2
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from keras import layers
 from keras.applications.densenet import DenseNet121
 
 
 IMG_SIZE = 128
-SOURCE_IMG_SIZE = 96
+CELEBA_WIDTH = 178
+CELEBA_HEIGHT = 218
 NUM_COORDINATES = 4
 EPOCHS = 50
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 RANDOM_SEED = 42
+DEFAULT_MAX_SAMPLES = 2000
 RANDOM_DATASET_OUTPUT_DIR = "outputs/random_dataset_predictions"
 
-DATASET_URL = (
-    "https://raw.githubusercontent.com/ruchawaghulde/"
-    "Facial-Keypoints-Detection/master/Data/training.zip"
-)
-DATASET_ZIP = "training.zip"
-TRAINING_CSV = "training.csv"
+CELEBA_BASE_URL = "https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba"
+CELEBA_IMAGE_URL = f"{CELEBA_BASE_URL}/img_align_celeba"
+CELEBA_LANDMARKS_FILE = "list_landmarks_align_celeba.txt"
 
-EYE_COLUMNS = [
-    "left_eye_center_x",
-    "left_eye_center_y",
-    "right_eye_center_x",
-    "right_eye_center_y",
-]
+
+def normalize_max_samples(max_samples):
+    if max_samples is None or max_samples <= 0:
+        return None
+    return max_samples
 
 
 def download_file(url, destination):
+    destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         print(f"Plik juz istnieje: {destination}")
@@ -45,58 +42,111 @@ def download_file(url, destination):
     urllib.request.urlretrieve(url, destination)
 
 
-def extract_zip(zip_path, output_dir):
-    training_csv = output_dir / TRAINING_CSV
-    if training_csv.exists():
-        print(f"Plik CSV juz istnieje: {training_csv}")
-        return
-
-    print(f"Rozpakowywanie: {zip_path}")
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        archive.extractall(output_dir)
-
-
-def download_and_extract_dataset(data_dir):
+def download_celeba_landmarks(data_dir):
     data_dir = Path(data_dir)
-    raw_dir = data_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
-    dataset_zip = raw_dir / DATASET_ZIP
-    download_file(DATASET_URL, dataset_zip)
-    extract_zip(dataset_zip, data_dir)
+    landmarks_path = data_dir / CELEBA_LANDMARKS_FILE
+    download_file(f"{CELEBA_BASE_URL}/{CELEBA_LANDMARKS_FILE}", landmarks_path)
+    return landmarks_path
 
 
-def image_string_to_array(image_string):
-    image = np.fromstring(image_string, sep=" ", dtype="float32")
-    if image.size != SOURCE_IMG_SIZE * SOURCE_IMG_SIZE:
-        raise ValueError("Niepoprawna liczba pikseli w kolumnie Image.")
-    return image.reshape(SOURCE_IMG_SIZE, SOURCE_IMG_SIZE)
-
-
-def load_keypoints_dataset(data_dir, max_samples=None):
-    csv_path = Path(data_dir) / TRAINING_CSV
-    if not csv_path.exists():
+def read_celeba_landmark_records(data_dir, max_samples=None):
+    landmarks_path = Path(data_dir) / CELEBA_LANDMARKS_FILE
+    if not landmarks_path.exists():
         raise FileNotFoundError(
-            f"Nie znaleziono {csv_path}. Uruchom skrypt z --download."
+            f"Nie znaleziono {landmarks_path}. Uruchom skrypt z --download "
+            "albo pozwol na automatyczne pobranie danych."
         )
 
-    df = pd.read_csv(csv_path)
-    df = df.dropna(subset=EYE_COLUMNS + ["Image"]).reset_index(drop=True)
-    if max_samples:
-        df = df.head(max_samples)
+    max_samples = normalize_max_samples(max_samples)
+    records = []
+    with open(landmarks_path, "r", encoding="utf-8") as handle:
+        total_images = int(handle.readline().strip())
+        header = handle.readline().split()
+        expected_header = [
+            "lefteye_x",
+            "lefteye_y",
+            "righteye_x",
+            "righteye_y",
+            "nose_x",
+            "nose_y",
+            "leftmouth_x",
+            "leftmouth_y",
+            "rightmouth_x",
+            "rightmouth_y",
+        ]
+        if header != expected_header:
+            raise ValueError(f"Nieoczekiwany naglowek landmarkow CelebA: {header}")
+
+        for line in handle:
+            parts = line.split()
+            if len(parts) != 11:
+                continue
+
+            filename = parts[0]
+            values = np.array([float(value) for value in parts[1:]], dtype="float32")
+            eye_coordinates = np.array(
+                [
+                    values[0] / CELEBA_WIDTH,
+                    values[1] / CELEBA_HEIGHT,
+                    values[2] / CELEBA_WIDTH,
+                    values[3] / CELEBA_HEIGHT,
+                ],
+                dtype="float32",
+            )
+            records.append((filename, eye_coordinates))
+
+            if max_samples and len(records) >= max_samples:
+                break
+
+    print(f"CelebA landmark file contains {total_images} images.")
+    print(f"Using {len(records)} color face images.")
+    return records
+
+
+def download_celeba_images(data_dir, records):
+    images_dir = Path(data_dir) / "img_align_celeba"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    for idx, (filename, _) in enumerate(records, start=1):
+        destination = images_dir / filename
+        if destination.exists():
+            continue
+
+        url = f"{CELEBA_IMAGE_URL}/{filename}"
+        print(f"Pobieranie obrazu {idx}/{len(records)}: {filename}")
+        urllib.request.urlretrieve(url, destination)
+
+
+def download_and_prepare_celeba(data_dir, max_samples=None):
+    download_celeba_landmarks(data_dir)
+    records = read_celeba_landmark_records(data_dir, max_samples=max_samples)
+    download_celeba_images(data_dir, records)
+
+
+def load_celeba_dataset(data_dir, max_samples=None):
+    data_dir = Path(data_dir)
+    if not (data_dir / CELEBA_LANDMARKS_FILE).exists():
+        download_celeba_landmarks(data_dir)
+
+    records = read_celeba_landmark_records(data_dir, max_samples=max_samples)
+    download_celeba_images(data_dir, records)
 
     images, labels = [], []
-    for _, row in df.iterrows():
-        image = image_string_to_array(row["Image"])
-        image = cv2.resize(image, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-        image = cv2.cvtColor(image.astype("uint8"), cv2.COLOR_GRAY2RGB)
-        images.append(image.astype("float32"))
+    images_dir = data_dir / "img_align_celeba"
+    for filename, eye_coordinates in records:
+        image_path = images_dir / filename
+        image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if image_bgr is None:
+            raise ValueError(f"Nie mozna wczytac obrazu: {image_path}")
 
-        labels.append(row[EYE_COLUMNS].to_numpy(dtype="float32") / SOURCE_IMG_SIZE)
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        image_rgb = cv2.resize(image_rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
+        images.append(image_rgb.astype("float32"))
+        labels.append(eye_coordinates)
 
     images = np.stack(images)
     labels = np.stack(labels)
-    print(f"Liczba zdjec twarzy: {len(images)}")
+    print(f"Liczba kolorowych zdjec CelebA: {len(images)}")
     print(f"Ksztalt obrazow: {images.shape}; ksztalt etykiet: {labels.shape}")
     return images, labels
 
@@ -146,7 +196,7 @@ def build_eye_detector():
         NUM_COORDINATES, activation="sigmoid", name="eye_coordinates"
     )(x)
 
-    model = keras.Model(inputs, outputs, name="facial_keypoints_eye_detector")
+    model = keras.Model(inputs, outputs, name="celeba_eye_detector")
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=1e-3),
         loss="mse",
@@ -204,7 +254,7 @@ def save_dataset_preview(images, labels, output_path, count=9):
 
 
 def train_model(data_dir, model_path, epochs, max_samples=None):
-    images, labels = load_keypoints_dataset(data_dir, max_samples=max_samples)
+    images, labels = load_celeba_dataset(data_dir, max_samples=max_samples)
     save_dataset_preview(images, labels, Path("outputs") / "dataset_preview.png")
 
     (
@@ -443,11 +493,11 @@ def predict_random_dataset_eyes(
     seed=None,
     max_samples=None,
 ):
-    """Losuje osoby z datasetu i zapisuje detekcje oczu wykonane modelem."""
+    """Losuje osoby z kolorowego CelebA i zapisuje detekcje oczu modelem."""
     if count <= 0:
         raise ValueError("--random-count musi byc wieksze od 0.")
 
-    images, labels = load_keypoints_dataset(data_dir, max_samples=max_samples)
+    images, labels = load_celeba_dataset(data_dir, max_samples=max_samples)
     if len(images) == 0:
         raise ValueError("Dataset nie zawiera zadnych obrazow do losowania.")
 
@@ -470,7 +520,7 @@ def predict_random_dataset_eyes(
             predictions[local_idx],
             selected_labels[local_idx],
             output_path,
-            title=f"Dataset index: {dataset_idx}",
+            title=f"CelebA index: {dataset_idx}",
         )
         print(f"Zapisano losowa predykcje: {output_path}")
 
@@ -486,20 +536,17 @@ def predict_random_dataset_eyes(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description=(
-            "Trening modelu DenseNet121 do wykrywania oczu na bazie "
-            "Kaggle Facial Keypoints Detection."
-        )
+        description="Trening modelu DenseNet121 do wykrywania oczu na kolorowym CelebA."
     )
     parser.add_argument(
         "--data-dir",
-        default="data/facial-keypoints",
-        help="Katalog na training.csv.",
+        default="data/celeba",
+        help="Katalog na kolorowy dataset CelebA.",
     )
     parser.add_argument(
         "--download",
         action="store_true",
-        help="Pobierz i rozpakuj publiczny mirror training.zip.",
+        help="Pobierz landmarki CelebA i brakujace kolorowe zdjecia.",
     )
     parser.add_argument(
         "--epochs",
@@ -510,12 +557,15 @@ def parse_args():
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=None,
-        help="Opcjonalny limit probek do szybkiego testu kodu.",
+        default=DEFAULT_MAX_SAMPLES,
+        help=(
+            "Limit pobieranych/wczytywanych zdjec CelebA. Domyslnie 2000. "
+            "Ustaw 0, aby uzyc wszystkich rekordow."
+        ),
     )
     parser.add_argument(
         "--model-path",
-        default="models/facial_keypoints_eye_detector.keras",
+        default="models/celeba_eye_detector.keras",
         help="Sciezka zapisu lub odczytu modelu.",
     )
     parser.add_argument(
@@ -542,7 +592,7 @@ def parse_args():
     parser.add_argument(
         "--random-dataset",
         action="store_true",
-        help="Wylosuj osoby z bazy i wykonaj na nich predykcje oczu.",
+        help="Wylosuj osoby z kolorowego CelebA i wykonaj predykcje oczu.",
     )
     parser.add_argument(
         "--random-count",
@@ -569,15 +619,13 @@ def parse_args():
 
 def main():
     args = parse_args()
+    max_samples = normalize_max_samples(args.max_samples)
 
-    dataset_file_path = Path(args.data_dir) / TRAINING_CSV
-    needs_dataset = not args.skip_train or args.random_dataset
-    if needs_dataset and not dataset_file_path.exists():
-        print(f"Dataset file {dataset_file_path} not found. Forcing download.")
-        args.download = True
-
-    if args.download:
-        download_and_extract_dataset(args.data_dir)
+    needs_dataset = not args.skip_train or args.random_dataset or args.download
+    if needs_dataset:
+        landmarks_path = Path(args.data_dir) / CELEBA_LANDMARKS_FILE
+        if args.download or not landmarks_path.exists():
+            download_and_prepare_celeba(args.data_dir, max_samples=max_samples)
 
     if args.skip_train:
         model = keras.models.load_model(args.model_path)
@@ -586,7 +634,7 @@ def main():
             args.data_dir,
             args.model_path,
             args.epochs,
-            max_samples=args.max_samples,
+            max_samples=max_samples,
         )
 
     if args.images:
@@ -604,7 +652,7 @@ def main():
             count=args.random_count,
             output_dir=args.random_output_dir,
             seed=args.random_seed,
-            max_samples=args.max_samples,
+            max_samples=max_samples,
         )
 
 

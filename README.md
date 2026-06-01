@@ -1,21 +1,25 @@
-# Eye detector - Facial Keypoints + DenseNet121
+# Eye detector - CelebA + DenseNet121
 
 Projekt zawiera kod podobny organizacyjnie do podanego przykladu Keras, ale
-zamiast klasyfikacji wideo trenuje model do wykrywania oczu ludzi na zdjeciach.
-Model przewiduje cztery znormalizowane wspolrzedne:
+zamiast klasyfikacji wideo trenuje model do wykrywania oczu ludzi na kolorowych
+zdjeciach twarzy. Model przewiduje cztery znormalizowane wspolrzedne:
 
 ```text
-left_eye_center_x, left_eye_center_y, right_eye_center_x, right_eye_center_y
+left_eye_x, left_eye_y, right_eye_x, right_eye_y
 ```
 
-Jako baza danych uzywany jest publiczny mirror **Kaggle Facial Keypoints
-Detection**:
+Jako baza danych uzywany jest publiczny mirror **CelebA**:
 
-- 7049 zdjec twarzy ludzi,
-- obrazy 96x96 zapisane w `training.csv` jako piksele,
-- recznie oznaczone punkty twarzy, w tym srodki lewego i prawego oka,
-- mirror: https://github.com/ruchawaghulde/Facial-Keypoints-Detection
-- opis konkursu: https://www.kaggle.com/c/facial-keypoints-detection/data
+- ponad 200 tys. kolorowych, wyrownanych zdjec twarzy,
+- obrazy JPG 218x178,
+- plik `list_landmarks_align_celeba.txt` z 5 landmarkami twarzy,
+- do treningu wykorzystywane sa landmarki lewego i prawego oka,
+- mirror: https://ftp.mi.fu-berlin.de/pub/cmb-data/celeba/
+- opis datasetu: https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
+
+Skrypt nie pobiera calego archiwum `img_align_celeba.zip` o rozmiarze ok. 1.3 GB.
+Zamiast tego pobiera plik landmarkow oraz pojedyncze zdjecia JPG potrzebne do
+aktualnego limitu `--max-samples`.
 
 ## Instalacja
 
@@ -25,22 +29,33 @@ pip install -r requirements.txt
 
 ## Trening modelu przez 50 epok
 
+Domyslnie skrypt pobiera i wykorzystuje 2000 kolorowych zdjec:
+
 ```bash
 python eye_detection_facial_keypoints.py --download --epochs 50
 ```
 
+Mozesz ustawic inny limit:
+
+```bash
+python eye_detection_facial_keypoints.py --download --epochs 50 --max-samples 5000
+```
+
+Ustawienie `--max-samples 0` oznacza probe uzycia wszystkich rekordow CelebA, co
+pobierze bardzo duzo danych.
+
 Skrypt:
 
-1. pobierze `training.zip` z publicznego mirroru,
-2. rozpakowuje `training.csv`,
-3. wczyta obrazy twarzy i adnotacje oczu,
+1. pobierze `list_landmarks_align_celeba.txt`,
+2. pobierze brakujace kolorowe obrazy z `img_align_celeba/`,
+3. wczyta zdjecia twarzy i adnotacje oczu,
 4. wytrenuje model DenseNet121 z wlasna glowa regresyjna,
-5. zapisze model do `models/facial_keypoints_eye_detector.keras`,
+5. zapisze model do `models/celeba_eye_detector.keras`,
 6. zapisze wykres treningu do `outputs/training_history.png`,
-7. zapisze podglad rzeczywistych zdjec i punktow oczu do
+7. zapisze podglad kolorowych zdjec i punktow oczu do
    `outputs/dataset_preview.png`.
 
-Do szybkiego sprawdzenia kodu bez pelnego treningu mozna ograniczyc liczbe probek:
+Do szybkiego sprawdzenia kodu bez pelnego treningu:
 
 ```bash
 python eye_detection_facial_keypoints.py --download --epochs 1 --max-samples 128
@@ -65,13 +80,13 @@ display(Image(filename="/content/outputs/dataset_preview.png"))
 
 ## Losowe predykcje na zdjeciach z bazy
 
-Glowny program potrafi tez wylosowac przykladowe twarze bezposrednio z datasetu
-i porownac predykcje modelu z etykietami oczu z bazy:
+Glowny program potrafi wylosowac przykladowe kolorowe twarze bezposrednio z
+CelebA i porownac predykcje modelu z etykietami oczu z bazy:
 
 ```bash
 python eye_detection_facial_keypoints.py \
   --skip-train \
-  --model-path models/facial_keypoints_eye_detector.keras \
+  --model-path models/celeba_eye_detector.keras \
   --random-dataset \
   --random-count 8 \
   --random-seed 42
@@ -115,7 +130,7 @@ Po treningu mozna zaznaczyc oczy na wlasnych zdjeciach:
 ```bash
 python eye_detection_facial_keypoints.py \
   --skip-train \
-  --model-path models/facial_keypoints_eye_detector.keras \
+  --model-path models/celeba_eye_detector.keras \
   --images zdjecie1.jpg zdjecie2.jpg
 ```
 
@@ -126,13 +141,14 @@ pozycje oczu na wycinku twarzy. Jesli chcesz pominac detekcje twarzy:
 ```bash
 python eye_detection_facial_keypoints.py \
   --skip-train \
-  --model-path models/facial_keypoints_eye_detector.keras \
+  --model-path models/celeba_eye_detector.keras \
   --images zdjecie1.jpg \
   --no-face-detect
 ```
 
 ## Uwaga
 
-Ten dataset zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej,
-gdy twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami
-obecny kod wybiera najwieksza wykryta twarz.
+CelebA zawiera glownie wykadrowane twarze. Model bedzie dzialal najlepiej, gdy
+twarz jest widoczna i niezbyt mocno obrocona. Dla zdjec z wieloma osobami obecny
+kod wybiera najwieksza wykryta twarz.
+# EYE_D
